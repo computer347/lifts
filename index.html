@@ -219,7 +219,7 @@ const TIERS={main:['Main','Always do these'],acc:['Accessory','Trim these first 
 const RANKS=[[0,'Rookie'],[8,'Regular'],[20,'Grinder'],[40,'Machine'],[75,'Beast'],[150,'Legend']];
 const KEY='mikelifts.v1';
 const defaults=()=>({sessions:[],body:[],templates:JSON.parse(JSON.stringify(PRESETS)),tplVersion:TPL_VERSION,
-  settings:{weeklyGoal:2,startWaist:36,goalWaist:34,goalDate:'2027-03-31',name:'Mike',bw:91,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories',barKg:20,plates:'25,20,15,10,5,2.5,1.25'},active:null});
+  settings:{weeklyGoal:2,startWaist:36,goalWaist:34,goalDate:'2027-03-31',name:'Mike',bw:91,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
 let S=load(),tab='home',restAlerted=true,wakeLock=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};
  if(m.tplVersion!==TPL_VERSION){m.templates=d.templates;m.tplVersion=TPL_VERSION}return m}}catch(e){}return defaults()}
@@ -368,33 +368,38 @@ function openPick(mode,i,tid){const cur=mode!=='swap'?null:tid?S.templates.find(
  modal(`<h1 style="font-size:22px">${cur?'Swap '+esc(cur.name):'Add exercise'}</h1>
   <input class="f" id="pq" placeholder="Search, or type a new name" autocomplete="off">
   <div class="chips" id="pkr"></div>
-  ${!tid&&mode==='add'?`<label class="small muted" style="display:block;margin-top:8px"><input type="checkbox" id="pkKeep"> Also add to ${esc(S.active.name)} preset</label>`:''}
+  ${tid?'':`<label class="small muted" style="display:block;margin-top:8px"><input type="checkbox" id="pkKeep" ${cur?'checked':''}> ${cur?'Save to':'Also add to'} ${esc(S.active.name)} preset</label>`}
   <div class="plist" id="pl"></div><button class="btn ghost block" data-act="close-modal" style="margin-top:8px">Cancel</button>`);renderPick()}
 function renderPick(){const all=lib(),q=pk.q.trim(),ql=q.toLowerCase(),cur=pk.cur,find=n=>all.find(x=>x.name===n)||{name:n};
  const alts=cur?(cur.opts||[cur.name,...(cur.alts||[])]).filter(n=>n!==cur.name&&n.toLowerCase().includes(ql)):[];
  const list=all.filter(x=>(!pk.r||x.region===pk.r)&&(x.name+' '+(x.muscles||'')).toLowerCase().includes(ql)&&!alts.includes(x.name)&&(!cur||x.name!==cur.name));
  const row=x=>`<button data-act="pick" data-n="${esc(x.name)}">${esc(x.name)}<small>${esc([x.region,x.muscles].filter(Boolean).join(' · '))}</small></button>`;
  $('#pkr').innerHTML=[['','All'],['Upper','Upper'],['Lower','Lower'],['Core','Core'],['Cardio','Cardio']].map(([r,l])=>`<button class="btn sm ${pk.r===r?'on':''}" data-act="pk-reg" data-r="${r}">${l}</button>`).join('');
- $('#pl').innerHTML=(alts.length?`<div class="plh">Alternatives</div>${alts.map(n=>row(find(n))).join('')}<div class="plh">${pk.r||'All'} exercises</div>`:'')+list.map(row).join('')
+ const sp=cur&&!q&&splitFor(cur);
+ $('#pl').innerHTML=(sp?`<div class="plh">Split into 2 isolations</div><button data-act="split">${esc(sp.join(' + '))}<small>Superset, ${cur.sets.length??cur.sets} sets each × 10–15. Same muscles, less joint and lower-back load.</small></button>`:'')+(alts.length?`<div class="plh">Alternatives</div>${alts.map(n=>row(find(n))).join('')}<div class="plh">${pk.r||'All'} exercises</div>`:'')+list.map(row).join('')
   +(q&&!all.some(x=>x.name.toLowerCase()===ql)?`<button data-act="pick" data-n="${esc(q)}">+ Add “${esc(q)}”<small>New custom exercise</small></button>`:'')}
-function doPick(nm){const{mode,i,tid}=pk,a=S.active;
- if(tid){const t=S.templates.find(t=>t.id===tid);if(mode==='swap')t.exercises[i]=swapped(t.exercises[i],nm);else t.exercises.push(newEx(nm))}
- else if(mode==='swap'){const e=a.exercises[i];if(e.sets.some(x=>x.done)&&!confirm('Swap and clear logged sets?'))return false;
-  const n=swapped(e,nm);a.exercises[i]=buildEx({...n,sets:typeof n.sets==='number'?n.sets:e.sets.length,opts:[nm,...n.alts]},e.ti);
-  const t=S.templates.find(t=>t.id===a.tid);if(t&&t.exercises[e.ti]&&t.exercises[e.ti].name===e.name)t.exercises[e.ti]=swapped(t.exercises[e.ti],nm)}
- else{const x=newEx(nm),t=$('#pkKeep').checked&&S.templates.find(t=>t.id===a.tid);if(t)t.exercises.push(x);a.exercises.push(buildEx(x,t?t.exercises.length-1:-1))}
+// nm = exercise to swap/add; no nm = split the current one into its 2 isolations.
+function doPick(nm){const{mode,i,tid,cur}=pk,a=S.active,keep=$('#pkKeep')&&$('#pkKeep').checked,pair=!nm&&splitFor(cur);
+ const repl=x=>pair?splitEx(x,pair):[swapped(x,nm)];
+ if(tid){const t=S.templates.find(t=>t.id===tid);if(mode==='swap')t.exercises.splice(i,1,...repl(t.exercises[i]));else t.exercises.push(newEx(nm))}
+ else if(mode==='swap'){const e=a.exercises[i];if(e.sets.some(x=>x.done)&&!confirm('Replace and clear logged sets?'))return false;
+  const t=keep&&S.templates.find(t=>t.id===a.tid),own=t&&t.exercises[e.ti]&&t.exercises[e.ti].name===e.name,xs=repl(e);
+  // only touch the preset when "Save to preset" is ticked; keep later exercises pointing at the right preset slot
+  if(own){t.exercises.splice(e.ti,1,...repl(t.exercises[e.ti]));a.exercises.forEach(o=>{if(o.ti>e.ti)o.ti+=xs.length-1})}
+  a.exercises.splice(i,1,...xs.map((x,k)=>buildEx({...x,sets:typeof x.sets==='number'?x.sets:e.sets.length,opts:[x.name,...(x.alts||[])]},own?e.ti+k:-1)))}
+ else{const x=newEx(nm),t=keep&&S.templates.find(t=>t.id===a.tid);if(t)t.exercises.push(x);a.exercises.push(buildEx(x,t?t.exercises.length-1:-1))}
  pk=null;save();render();return true}
-// ================= plate math & warm-ups =================
-const isBar=n=>/squat|deadlift|bench press|overhead press|barbell|hip thrust|ez-bar|skull crusher|t-bar/i.test(n)&&!/\bdb\b|dumbbell|machine|smith|goblet|hack|split|trap/i.test(n);
-const barKg=n=>/ez-bar/i.test(n)?10:+S.settings.barKg||20;
-function plates(w,bar){let side=(w-bar)/2;if(side<0)return null;const out=[];
- for(const p of String(S.settings.plates).split(',').map(Number).filter(x=>x>0).sort((a,b)=>b-a))while(side>=p-1e-6){out.push(p);side-=p}return{out,left:side}}
-function plateLine(e){if(kindOf(e)!=='lift'||!isBar(e.name))return '';const x=e.sets.find(s=>!s.done)||e.sets.at(-1),w=num(x&&x.w),bar=barKg(e.name);if(!w)return '';
- const p=plates(w,bar);if(!p)return `Less than the ${bar} kg bar`;
- return `Plates per side for ${w} kg: <b style="color:var(--text)">${p.out.length?p.out.join(' + '):'empty bar'}</b>${p.left>.01?` (${+p.left.toFixed(2)} kg short)`:''}`}
+// ================= compound → 2 isolations =================
+// Same muscles, less joint/lower-back load and no big setup: handy when a machine is taken or something aches.
+const SPLITS=[[/squat|leg press|lunge|step-up/i,['Leg Extension','Hip Thrust']],[/deadlift/i,['Seated Leg Curl','Hip Thrust']],
+ [/bench|chest press|push-up|dip|incline.*press|smith press/i,['Cable Fly','Triceps Pushdown']],[/shoulder press|overhead press|arnold/i,['DB Lateral Raise','Triceps Pushdown']],
+ [/pulldown|pull-up|chin-up/i,['Straight-Arm Pulldown','Cable Curl']],[/row/i,['Straight-Arm Pulldown','Rear Delt Fly (machine)']]];
+const splitFor=x=>{const s=kindOf(x)==='lift'&&SPLITS.find(([r])=>r.test(x.name));return s&&!s[1].includes(x.name)?s[1]:null};
+function splitEx(x,pair){const ss='sp'+Date.now().toString(36);
+ return pair.map(n=>({...newEx(n),tier:x.tier||'acc',ss,sets:typeof x.sets==='number'?x.sets:x.sets.length,repMin:10,repMax:15,rest:60}))}
+// ================= warm-ups =================
 function warmups(e){if(kindOf(e)!=='lift'||e.tier!=='main'||e.sets.some(x=>x.done))return '';const w=num(e.sets[0].w);if(!w||w<30)return '';
- const bar=isBar(e.name)?barKg(e.name):0,r=x=>Math.max(bar,Math.round(x/2.5)*2.5);
- return 'Warm-up: '+(bar?`bar×10 · `:'')+[[.5,5],[.7,3],[.85,1]].map(([p,n])=>`${r(w*p)}×${n}`).join(' · ')}
+ return 'Warm-up: '+[[.5,5],[.7,3],[.85,1]].map(([p,n])=>`${Math.round(w*p/2.5)*2.5}×${n}`).join(' · ')}
 function startRest(sec,label){if(!sec)return;S.active.restEnd=Date.now()+sec*1000;S.active.restDur=sec;S.active.restLabel=label;restAlerted=false;save();tickRest()}
 function finish(){const a=S.active;const sess={id:Date.now(),date:a.start,tid:a.tid,name:a.name,dur:Math.round((Date.now()-a.start)/1000),
  exercises:a.exercises.map(e=>({name:e.name,kind:kindOf(e),muscles:e.muscles||'',sets:e.sets.filter(x=>x.done).map(x=>({w:num(x.w)??0,r:num(x.r)??0,done:true}))})).filter(e=>e.sets.length)};
@@ -467,9 +472,7 @@ function exCard(e,i){const k=kindOf(e),c=COLS[k],all=e.sets.every(x=>x.done);
   ${e.sets.map((x,j)=>`<tr class="${x.done?'done':''}"><td class="muted">${j+1}</td>
    <td><input inputmode="decimal" data-e="${i}" data-s="${j}" data-f="w" value="${x.w}"></td>
    <td><input inputmode="numeric" data-e="${i}" data-s="${j}" data-f="r" value="${x.r}"></td>
-   <td><button class="chk" data-act="check" data-e="${i}" data-s="${j}">✓</button></td></tr>`).join('')}</table>
-  <div class="muted small" id="plates${i}" style="margin-top:4px">${plateLine(e)}</div>
-  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="set-add" data-e="${i}">+ Set</button>
+   <td><button class="chk" data-act="check" data-e="${i}" data-s="${j}">✓</button></td></tr>`).join('')}</table>  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="set-add" data-e="${i}">+ Set</button>
   ${e.sets.length>1?`<button class="btn sm ghost" data-act="set-del" data-e="${i}">− Set</button>`:''}</div></div>`}
 function vWorkout(){const a=S.active,ex=a.exercises,doneN=ex.filter(e=>e.sets.every(x=>x.done)).length;
  let html=`<div class="row between" style="margin-top:6px"><div><div class="muted small">${esc(a.name)} · ${doneN}/${ex.length} done</div><h1 class="timer day-t" id="elapsed" style="font-size:42px">0:00</h1></div>
@@ -531,7 +534,7 @@ function vProg(){const names=[...new Set(S.sessions.flatMap(s=>s.exercises.filte
   <p class="small" style="margin:8px 0 0">${!wp?'Log waist weekly for a projection.':wp.eta?`At ${wp.slopeWk.toFixed(2)}"/week you reach ${S.settings.goalWaist}" around <b>${wp.eta.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</b> ${wp.eta<=new Date(S.settings.goalDate)?'<span class="day-t">ahead of target</span>':'(after target date)'}.`:'Waist isn’t trending down yet.'}</p></div>
  <h2>Sets per muscle, last 7 days</h2><div class="card">${MUSCLE_TARGETS.map(([m,lo,hi])=>{const v=ws[m]||0,col=v<lo?'#e5a50a':v<=hi?'var(--good)':'var(--day)';
   return `<div style="margin:7px 0"><div class="row between small"><span>${m}</span><span class="muted">${+v.toFixed(1)} / ${lo}–${hi}</span></div><div class="bar" style="height:6px;position:relative"><i style="width:${Math.min(100,v/(hi*1.2)*100)}%;background:${col}"></i></div></div>`}).join('')}
-  <p class="muted small" style="margin:8px 0 0">Direct sets count 1, secondary muscles 0.5. Targets from hypertrophy volume research (~10+ hard sets/week for priority muscles).</p></div>
+  <p class="muted small" style="margin:8px 0 0">Direct sets count 1, secondary muscles 0.5: the counting that fit best in the largest volume meta-analysis (Pelland et al., 67 studies). More sets keep adding growth with diminishing returns past ~10–12/week; ~4 hard sets is the minimum that clearly works, and enough to hold muscle on a cut.</p></div>
  <h2>Lifts</h2><div class="card">${exs.length?exs.map(s=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><div><b>${esc(s.name)}</b><div class="muted small">e1RM ${Math.round(s.last.v)} · best ${Math.round(s.best)} · ${s.n} sessions</div></div>
   <div style="text-align:right"><span class="tier ${s.status==='Stalled'?'acc':'main'}">${s.status}</span><div class="small ${s.trend>0?'day-t':'muted'}">${sgn(s.trend,1)} kg/wk</div></div></div>
   ${s.status==='Stalled'?`<p class="small muted" style="margin:4px 0 6px">No new best in ${s.since} sessions. Try a lighter week (−10%) or swap to a variation.</p>`:''}`).join(''):'<p class="muted small" style="margin:0">Log a workout first.</p>'}</div>
@@ -561,9 +564,6 @@ function vSet(){const st=S.settings;
  <p class="small muted">Estimate: lifting ≈ 5 METs, incline walk via the ACSM walking equation, bike ≈ 6 METs, counted as active (above-resting) kcal. Expect ±25%. If you get a Whoop, switch to Off so calories aren’t counted twice.</p></details></div>
  <h2>Backup</h2><div class="card"><p class="muted small" style="margin-top:0">Data lives only on this phone. Export now and then.</p>
  <div class="row"><button class="btn" data-act="export">Export</button><label class="btn">Import<input type="file" accept=".json" id="imp" hidden></label></div></div>
- <h2>Plates</h2><div class="card">
- <label class="small muted">Barbell (kg, EZ-bar counts as 10)</label><input class="f" style="margin:4px 0 10px" type="number" data-set="barKg" value="${esc(st.barKg)}">
- <label class="small muted">Plates you have (kg, comma separated)</label><input class="f" style="margin:4px 0 0" type="text" data-set="plates" value="${esc(st.plates)}"></div>
  <h2>Presets</h2>${S.templates.map(t=>`<div class="card"><b><span class="dot" style="--c:${t.color}"></span>${esc(t.name)}</b>
  ${t.exercises.map((x,i)=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><div><div>${esc(x.name)}</div><div class="muted small">${x.tier?TIERS[x.tier][0]+' · ':''}${x.sets} × ${x.repMin===x.repMax?x.repMin:x.repMin+'–'+x.repMax}${x.ss?' · superset '+esc(x.ss):''}</div></div>
   <div class="row" style="gap:4px"><button class="swap" data-act="pk-open" data-m="swap" data-t="${t.id}" data-e="${i}">⇄</button><button class="btn ghost sm" data-act="tex-del" data-t="${t.id}" data-e="${i}">✕</button></div></div>`).join('')}
@@ -587,8 +587,7 @@ setInterval(tickRest,250);
 // ================= events =================
 document.addEventListener('input',ev=>{const t=ev.target;
  if(t.dataset.f&&S.active){const ex=S.active.exercises[t.dataset.e];ex.sets[t.dataset.s][t.dataset.f]=t.value.replace(',','.');
-  if(t.dataset.f==='w'){for(let j=+t.dataset.s+1;j<ex.sets.length;j++)if(!ex.sets[j].done){ex.sets[j].w=t.value;const i=document.querySelector(`input[data-e="${t.dataset.e}"][data-s="${j}"][data-f="w"]`);if(i)i.value=t.value}
-   const p=$('#plates'+t.dataset.e);if(p)p.innerHTML=plateLine(ex)}
+  if(t.dataset.f==='w'){for(let j=+t.dataset.s+1;j<ex.sets.length;j++)if(!ex.sets[j].done){ex.sets[j].w=t.value;const i=document.querySelector(`input[data-e="${t.dataset.e}"][data-s="${j}"][data-f="w"]`);if(i)i.value=t.value}}
   save()}
  if(t.id==='pq'&&pk){pk.q=t.value;renderPick()}
  if(t.dataset.set){S.settings[t.dataset.set]=t.type==='number'?+t.value:t.value;save()}});
@@ -611,6 +610,7 @@ document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[da
  case 'pk-open':openPick(b.dataset.m,ei,b.dataset.t);break;
  case 'pk-reg':pk.r=b.dataset.r;renderPick();break;
  case 'pick':if(doPick(b.dataset.n))b.closest('.modal').remove();break;
+ case 'split':if(doPick(null))b.closest('.modal').remove();break;
  case 'tex-del':{const t=S.templates.find(t=>t.id===b.dataset.t);if(confirm('Remove '+t.exercises[ei].name+' from '+t.name+'?')){t.exercises.splice(ei,1);save();render()}break}
  case 'set-add':{const s=a.exercises[ei].sets,l=s[s.length-1]||{w:'',r:''};s.push({w:l.w,r:l.r,done:false});save();render();break}
  case 'set-del':a.exercises[ei].sets.pop();save();render();break;

@@ -135,7 +135,17 @@ const PRESETS=[
   {name:'Eccentric Heel Drop (straight knee)',tier:'main',region:'Lower',muscles:'calves, Achilles',sets:3,repMin:15,repMax:15,rest:60,inc:0,cue:'Per your rehab plan: up on both feet, lower slowly (3 s) on the rehab side. kg = backpack weight.'},
   {name:'Eccentric Heel Drop (bent knee)',tier:'main',region:'Lower',muscles:'soleus, Achilles',sets:3,repMin:15,repMax:15,rest:60,inc:0,cue:'Same, knee slightly bent.'},
   {name:'Plank',tier:'acc',region:'Core',muscles:'abs, bracing',kind:'hold',sets:3,repMin:30,repMax:60,rest:45,inc:0,cue:'Squeeze glutes, ribs down.'},
-  {name:'Side Plank',tier:'acc',region:'Core',muscles:'obliques',kind:'hold',sets:2,repMin:20,repMax:45,rest:30,inc:0,cue:'Each side. Log the weaker side.'}]}
+  {name:'Side Plank',tier:'acc',region:'Core',muscles:'obliques',kind:'hold',sets:2,repMin:20,repMax:45,rest:30,inc:0,cue:'Each side. Log the weaker side.'}]},
+ // Optional, outside the A/B rotation: fills muscle gaps on days you can't get to the gym. kg = backpack weight, 0 = bodyweight.
+ {id:'BW',name:'Home · Bodyweight',color:'#b46cff',exercises:[
+  {name:'Push-up',tier:'main',region:'Upper',muscles:'chest, triceps, front delts',ss:'w1',sets:3,repMin:8,repMax:15,rest:75,inc:0,alts:['Incline Push-up'],cue:'Too hard: hands on a table (incline). Too easy: backpack on.'},
+  {name:'Backpack Row',tier:'main',region:'Upper',muscles:'upper back, lats, biceps, rear delts',ss:'w1',sets:3,repMin:10,repMax:15,rest:75,inc:0,alts:['Doorframe Towel Row'],cue:'Hinge forward, flat back, pull the bag to your hip.'},
+  {name:'Bulgarian Split Squat',tier:'main',region:'Lower',muscles:'quads, glutes',ss:'w2',sets:3,repMin:8,repMax:12,rest:75,inc:0,alts:['Goblet Squat'],cue:'Reps per leg. Back foot on a chair, front shin roughly vertical.'},
+  {name:'Backpack Lateral Raise',tier:'main',region:'Upper',muscles:'side delts',ss:'w2',sets:3,repMin:15,repMax:20,rest:75,inc:0,alts:['Water-bottle Lateral Raise'],cue:'Hold the bag by a strap, or a bottle in each hand. Stop at shoulder height.'},
+  {name:'Single-Leg Glute Bridge',tier:'acc',region:'Lower',muscles:'glutes, hamstrings',ss:'w3',sets:3,repMin:10,repMax:12,rest:60,inc:0,alts:['Glute Bridge'],cue:'Reps per side. Squeeze at the top for a second.'},
+  {name:'Lying Leg Raise',tier:'acc',region:'Core',muscles:'abs, hip flexors',ss:'w3',sets:3,repMin:10,repMax:15,rest:60,inc:0,alts:['Hanging Leg Raise'],cue:'Lower back pressed into the floor, lower slowly.'},
+  {name:'Towel Slider Leg Curl',tier:'acc',region:'Lower',muscles:'hamstrings',ss:'w4',sets:2,repMin:8,repMax:12,rest:60,inc:0,alts:['Glute Bridge'],cue:'Heels on a towel on a smooth floor, hips up, curl the heels in.'},
+  {name:'Single-Leg Calf Raise',tier:'acc',region:'Lower',muscles:'calves',ss:'w4',sets:2,repMin:15,repMax:15,rest:60,inc:0,cue:'Reps per leg, on a step. Full stretch at the bottom.'}]}
 ];
 // Exercise library for Add / Swap: name|region|muscles|flag (bw = bodyweight, hold = timed). Cardio region = cardio kind.
 const LIB=`Back Squat|Lower|quads, glutes
@@ -214,7 +224,7 @@ Rowing Machine|Cardio|conditioning
 Stair Climber|Cardio|conditioning
 Elliptical|Cardio|conditioning`.split('\n').map(l=>{const[name,region,muscles,f]=l.split('|');
  return{name,region,muscles,kind:f==='hold'?'hold':region==='Cardio'?'cardio':undefined,...(f==='bw'&&{inc:0})}});
-const TPL_VERSION=3,ROTATION=['A','B'];
+const TPL_VERSION=4,ROTATION=['A','B'];
 const TIERS={main:['Main','Always do these'],acc:['Accessory','Trim these first if short on time'],opt:['Optional','Bonus']};
 const RANKS=[[0,'Rookie'],[8,'Regular'],[20,'Grinder'],[40,'Machine'],[75,'Beast'],[150,'Legend']];
 const KEY='mikelifts.v1';
@@ -222,7 +232,8 @@ const defaults=()=>({sessions:[],body:[],templates:JSON.parse(JSON.stringify(PRE
   settings:{weeklyGoal:2,startWaist:36,goalWaist:34,goalDate:'2027-03-31',name:'Mike',bw:91,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
 let S=load(),tab='home',restAlerted=true,wakeLock=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};
- if(m.tplVersion!==TPL_VERSION){m.templates=d.templates;m.tplVersion=TPL_VERSION}return m}}catch(e){}return defaults()}
+ // new preset version: add presets you don't have yet, keep your edited ones as they are
+ if(m.tplVersion!==TPL_VERSION){m.templates=[...m.templates,...d.templates.filter(p=>!m.templates.some(t=>t.id===p.id))];m.tplVersion=TPL_VERSION}return m}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 // ================= helpers =================
@@ -251,7 +262,7 @@ function suggest(t){const k=kindOf(t),last=lastPerf(t.name);
  if(k==='hold'){if(!last)return{w:0,r:t.repMin,note:`Start at ${t.repMin} s, build to ${t.repMax} s`};
   const lo=Math.min(...last.map(x=>num(x.r)));
   return lo>=t.repMax?{w:0,r:t.repMax,up:true,note:'Maxed it. Hold a plate or try a harder variation'}:{w:0,r:Math.min(t.repMax,lo+5),note:`Beat last: ${Math.min(t.repMax,lo+5)} s`}}
- if(!last)return{w:t.inc===0?0:'',r:t.repMax,note:'First time: pick a weight that leaves ~2 reps in the tank'};
+ if(!last)return{w:t.inc===0?0:'',r:t.repMax,note:t.inc===0?`First time: aim for ${t.repMin}–${t.repMax} reps, stopping ~2 short of failure`:'First time: pick a weight that leaves ~2 reps in the tank'};
  const top=Math.max(...last.map(x=>num(x.w)||0)),work=last.filter(x=>(num(x.w)||0)===top);
  const maxed=work.length>=t.sets&&work.every(x=>num(x.r)>=t.repMax);
  if(maxed&&t.inc>0)return{w:r25(top+t.inc),r:t.repMin,up:true,note:`+${t.inc} kg. You hit ${t.repMax}s across the board last time`};
@@ -284,13 +295,25 @@ function bwTrend(){const pts=S.body.filter(b=>b.weight).sort((a,b)=>a.date-b.dat
 function waistProj(){const pts=S.body.filter(b=>b.waist).sort((a,b)=>a.date-b.date);if(pts.length<2||pts.at(-1).date-pts[0].date<7*DAY)return null;
  const lr=linreg(pts.map(p=>({x:p.date/DAY,y:p.waist})));if(!lr)return null;const now=pts.at(-1).waist,g=+S.settings.goalWaist;
  if(lr.slope>=0)return{slopeWk:lr.slope*7,eta:null};return{slopeWk:lr.slope*7,eta:new Date(pts.at(-1).date+(now-g)/(-lr.slope)*DAY)}}
-const MUSCLE_TARGETS=[['Back',10,16],['Side delts',8,14],['Chest',8,12],['Quads',8,12],['Hamstrings',6,10],['Glutes',4,10],['Rear delts',4,8],['Biceps',4,10],['Triceps',4,10],['Abs',4,8]];
+const MUSCLE_TARGETS=[['Back',10,16],['Side delts',8,14],['Chest',8,12],['Quads',8,12],['Hamstrings',6,10],['Glutes',4,10],['Rear delts',4,8],['Biceps',4,10],['Triceps',4,10],['Abs',4,8],['Calves',4,8]];
 function mapTok(p){p=p.toLowerCase();if(p.includes('hamstring'))return 'Hamstrings';if(p.includes('quad'))return 'Quads';if(p.includes('glute'))return 'Glutes';
  if(p.includes('chest'))return 'Chest';if(p.includes('lat')||p.includes('mid back')||p.includes('upper back'))return 'Back';if(p.includes('side'))return 'Side delts';
- if(p.includes('rear'))return 'Rear delts';if(p.includes('bicep'))return 'Biceps';if(p.includes('tricep'))return 'Triceps';if(p.includes('abs')||p.includes('oblique'))return 'Abs';return null}
+ if(p.includes('rear'))return 'Rear delts';if(p.includes('bicep'))return 'Biceps';if(p.includes('tricep'))return 'Triceps';if(p.includes('abs')||p.includes('oblique'))return 'Abs';if(p.includes('calf')||p.includes('calves'))return 'Calves';return null}
 function musclesFor(e){if(e.muscles)return e.muscles;for(const t of S.templates)for(const x of t.exercises)if(x.name===e.name||(x.alts||[]).includes(e.name))return x.muscles;return ''}
 function weeklySets(){const out={};S.sessions.filter(s=>s.date>Date.now()-7*DAY).forEach(s=>s.exercises.forEach(e=>{const n=e.sets.length,seen={};
  musclesFor(e).split(',').forEach((tok,i)=>tok.split('&').forEach((p,j)=>{const g=mapTok(p);if(!g||seen[g])return;seen[g]=1;out[g]=(out[g]||0)+n*(i===0&&j===0?1:.5)}))}));return out}
+// Home bodyweight suggestion: after a 3+ day gym gap, or on a weekend short of the weekly goal,
+// pick up to 5 BW exercises for the muscles furthest below their weekly minimum.
+function bwPlan(){const t=S.templates.find(t=>t.id==='BW');if(!t||S.sessions.some(s=>isoD(s.date)===isoD(Date.now())))return null;
+ const gym=S.sessions.filter(s=>ROTATION.includes(s.tid)),last=gym.at(-1),days=last?(Date.now()-last.date)/DAY:0;
+ const wk=gym.filter(s=>s.date>=monday(Date.now())).length,g=S.settings.weeklyGoal,wkend=[0,6].includes(new Date().getDay());
+ const why=days>=3?`${Math.floor(days)} days since your last gym session`:wkend&&wk<g?`Weekend, ${wk}/${g} gym sessions this week`:null;if(!why)return null;
+ const ws=weeklySets(),gap={};MUSCLE_TARGETS.forEach(([m,lo])=>{if((ws[m]||0)<lo)gap[m]=lo-(ws[m]||0)});
+ const legDayNext=nextTpl().id==='A';
+ const picks=t.exercises.filter(x=>!(legDayNext&&x.name==='Bulgarian Split Squat')).map(x=>{let score=0,top=null;const seen={};
+  (x.muscles||'').split(',').forEach((tok,i)=>{const m=mapTok(tok);if(m&&gap[m]&&!seen[m]){seen[m]=1;score+=gap[m]*(i?.5:1);top=top||m}});return{x,score,top}})
+  .filter(p=>p.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
+ return picks.length?{t,why,picks,ws}:null}
 function retention(){const bt=bwTrend(),mains=new Set();S.templates.forEach(t=>t.exercises.forEach(x=>{if(x.tier==='main')mains.add(x.name)}));
  const ch=[];mains.forEach(n=>{const s=e1Series(n).filter(p=>p.date>Date.now()-35*DAY);if(s.length>=2)ch.push((s.at(-1).v-s[0].v)/s[0].v*100)});
  const b=bt?bt.series.filter(p=>p.date>Date.now()-35*DAY):[];
@@ -345,8 +368,9 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.active)
 function buildEx(e,ti){const s=suggest(e),l=lastPerf(e.name);
  return{...e,ti,opts:e.opts||[e.name,...(e.alts||[])],note:s.note,up:!!s.up,last:l?l.map(x=>`${num(x.w)??0}×${x.r}`).join(', '):'',
   sets:Array.from({length:e.sets},()=>({w:s.w,r:s.r,done:false}))}}
-function start(tid){const t=S.templates.find(t=>t.id===tid);if(!t)return;unlock();
- S.active={tid,name:t.name,color:t.color,start:Date.now(),restEnd:0,restDur:0,exercises:t.exercises.map((e,i)=>buildEx(e,i))};
+// only = optional list of exercise names to keep (preset order and slots stay intact)
+function start(tid,only){const t=S.templates.find(t=>t.id===tid);if(!t)return;unlock();
+ S.active={tid,name:t.name,color:t.color,start:Date.now(),restEnd:0,restDur:0,exercises:t.exercises.map((e,i)=>buildEx(e,i)).filter(e=>!only||only.includes(e.name))};
  save();tab='home';keepAwake(true);render();scrollTo(0,0)}
 // ================= exercise library / picker =================
 // Your presets (and their alts) come first so their sets, reps and cues are reused; then the built-in list; then custom names from history.
@@ -435,13 +459,17 @@ function vHome(){const st=S.settings,wk=weekCounts()[monday(Date.now())]||0,g=st
  const wp=Math.max(0,Math.min(1,(st.startWaist-waist)/(st.startWaist-st.goalWaist)));
  const days=Math.max(0,Math.ceil((new Date(st.goalDate)-Date.now())/864e5));
  const s30=S.sessions.filter(s=>s.date>Date.now()-30*864e5),vol30=s30.reduce((a,s)=>a+volume(s),0),prs=recentPRs();
- const mains=nx.exercises.filter(e=>e.tier==='main'),rest=nx.exercises.filter(e=>e.tier!=='main');
+ const mains=nx.exercises.filter(e=>e.tier==='main'),rest=nx.exercises.filter(e=>e.tier!=='main'),bw=bwPlan();
  return `<div class="row between" style="margin-top:6px"><span class="pill">${rk.name}</span></div>
  <h1 style="margin-top:10px">${greet}, ${esc(st.name)}</h1>
  <div class="hero"><div class="lbl">Up next</div><div class="nm">${esc(nx.name)}</div>
  <div class="ex"><b>${mains.map(e=>esc(e.name)).join(' · ')}</b><br><span>+ ${rest.map(e=>esc(e.name)).join(' · ')}</span></div>
  <button class="go" data-act="start" data-id="${nx.id}">Start workout</button></div>
  <div class="tpl">${S.templates.filter(t=>t.id!==nx.id).map(t=>`<button class="btn daybtn" style="--c:${t.color}" data-act="start" data-id="${t.id}">${esc(t.name)}</button>`).join('')}</div>
+ ${bw?`<h2>Home workout</h2><div class="card"><b><span class="dot" style="--c:${bw.t.color}"></span>${esc(bw.t.name)}</b>
+  <div class="muted small" style="margin:2px 0 6px">${bw.why}. These hit the muscles furthest below their weekly minimum:</div>
+  ${bw.picks.map(p=>`<div class="row between small" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${esc(p.x.name)}</span><span class="muted">${p.top} ${+(bw.ws[p.top]||0).toFixed(1)}/${MUSCLE_TARGETS.find(m=>m[0]===p.top)[1]} sets</span></div>`).join('')}
+  <button class="btn block" style="margin-top:10px;background:${bw.t.color};color:#fff" data-act="start-bw">Start home workout · ${bw.picks.length} exercises</button></div>`:''}
  <h2>This week</h2>
  <div class="card row"><div class="ring"><svg width="88" height="88">
  <circle cx="44" cy="44" r="38" stroke="#22242b" stroke-width="9" fill="none"/>
@@ -598,6 +626,7 @@ document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[da
  const act=b.dataset.act,a=S.active,ei=+b.dataset.e,si=+b.dataset.s;
  switch(act){
  case 'start':if(S.active&&!confirm('A workout is already running. Replace it?'))return;start(b.dataset.id);break;
+ case 'start-bw':{const p=bwPlan();if(p)start('BW',p.picks.map(x=>x.x.name));break}
  case 'check':{const e=a.exercises[ei],x=e.sets[si],k=kindOf(e);x.done=!x.done;
   if(x.done){if(x.r==='')x.r=e.repMin;if(x.w==='')x.w=0;
    if(k==='lift'){const prev=bestE1(e.name),v=e1rm(num(x.w),num(x.r));

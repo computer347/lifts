@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#0d0e12">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
-<title>Mike Lifts</title>
+<title>Lifts</title>
 <style>
 :root{--bg:#0d0e12;--card:#16171c;--card2:#22242b;--line:#272930;--text:#f3f4f6;--muted:#8a8f9b;--good:#22c58b;--day:#3d7bff}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -234,7 +234,7 @@ const TIERS={main:['Main','Always do these'],acc:['Accessory','Trim these first 
 const RANKS=[[0,'Rookie'],[8,'Regular'],[20,'Grinder'],[40,'Machine'],[75,'Beast'],[150,'Legend']];
 const KEY='mikelifts.v1';
 const defaults=()=>({sessions:[],body:[],photos:[],templates:JSON.parse(JSON.stringify(PRESETS)),tplVersion:TPL_VERSION,
-  settings:{weeklyGoal:2,startWaist:36,goalWaist:34,goalDate:'2027-03-31',name:'Mike',bw:91,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
+  settings:{weeklyGoal:2,startWaist:'',goalWaist:'',goalDate:'',name:'',bw:80,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
 let S=load(),tab='home',restAlerted=true,wakeLock=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};
  // new preset version: add presets you don't have yet, keep your edited ones as they are
@@ -278,7 +278,7 @@ function nextTpl(){const last=[...S.sessions].reverse().find(s=>ROTATION.include
  const i=last?(ROTATION.indexOf(last.tid)+1)%ROTATION.length:0;return S.templates.find(t=>t.id===ROTATION[i])||S.templates[0]}
 // ================= analytics =================
 const DAY=864e5;
-function curBW(){const b=[...S.body].reverse().find(x=>x.weight);return b?b.weight:(+S.settings.bw||91)}
+function curBW(){const b=[...S.body].reverse().find(x=>x.weight);return b?b.weight:(+S.settings.bw||80)}
 function linreg(pts){const n=pts.length;if(n<2)return null;const mx=pts.reduce((a,p)=>a+p.x,0)/n,my=pts.reduce((a,p)=>a+p.y,0)/n;
  const sxx=pts.reduce((a,p)=>a+(p.x-mx)**2,0);if(!sxx)return null;const slope=pts.reduce((a,p)=>a+(p.x-mx)*(p.y-my),0)/sxx;return{slope,icept:my-slope*mx}}
 // Calories: lifting ≈ 5 METs (Compendium of Physical Activities); incline walk via ACSM walking equation; bike ≈ 6 METs. Active kcal = (MET−1)·kg·h.
@@ -528,7 +528,7 @@ function vHome(){const st=S.settings,wk=weekCounts()[monday(Date.now())]||0,g=st
  const s30=S.sessions.filter(s=>s.date>Date.now()-30*864e5),vol30=s30.reduce((a,s)=>a+volume(s),0),prs=recentPRs();
  const mains=nx.exercises.filter(e=>e.tier==='main'),rest=nx.exercises.filter(e=>e.tier!=='main'),bw=bwPlan();
  return `<div class="row between" style="margin-top:6px"><span class="pill">${rk.name}</span></div>
- <h1 style="margin-top:10px">${greet}, ${esc(st.name)}</h1>
+ <h1 style="margin-top:10px">${greet}${st.name?', '+esc(st.name):''}</h1>
  <div class="hero"><div class="lbl">Up next</div><div class="nm">${esc(nx.name)}</div>
  <div class="ex"><b>${mains.map(e=>esc(e.name)).join(' · ')}</b><br><span>+ ${rest.map(e=>esc(e.name)).join(' · ')}</span></div>
  <button class="go" data-act="start" data-id="${nx.id}">Start workout</button></div>
@@ -544,10 +544,10 @@ function vHome(){const st=S.settings,wk=weekCounts()[monday(Date.now())]||0,g=st
  <div style="flex:1"><b style="font-size:18px">${wk>=g?(wk>g?'Bonus session banked':'Week goal done'):`${g-wk} session${g-wk>1?'s':''} to go`}</b>
  <div class="muted small" style="margin:2px 0 8px">${sk} week streak</div>
  <div class="bar" style="height:6px"><i style="width:${rk.pct*100}%"></i></div><div class="muted small" style="margin-top:4px">${rk.next?`${rk.left} sessions to ${rk.next}`:'Max rank'}</div></div></div>
- <h2>Road to 34s</h2>
- <div class="card"><div class="row between"><b>Waist ${waist}" → ${st.goalWaist}"</b><span class="muted small">${days} days left</span></div>
+ ${+st.goalWaist&&+st.startWaist?`<h2>Road to ${st.goalWaist}s</h2>
+ <div class="card"><div class="row between"><b>Waist ${waist}" → ${st.goalWaist}"</b><span class="muted small">${st.goalDate?days+' days left':''}</span></div>
  <div class="bar" style="margin:10px 0 6px"><i style="width:${Math.max(3,wp*100)}%"></i></div>
- <div class="muted small">${Math.round(wp*100)}% there${lb?'':' · log your waist in Progress'}</div></div>
+ <div class="muted small">${Math.round(wp*100)}% there${lb?'':' · log your waist in Stats'}</div></div>`:''}
  <div class="stats"><div class="stat"><b class="day-t">${fmtKg(vol30)}</b><span>lifted, 30 days</span></div><div class="stat"><b>${s30.length}</b><span>sessions, 30d</span></div><div class="stat"><b>${prs.length}</b><span>PRs, 30d</span></div></div>
  ${prs.length?`<h2>Recent PRs</h2><div class="card">${prs.slice(0,5).map(p=>`<div class="row between" style="padding:4px 0"><span><span class="tier main">PR</span> ${esc(p.name)}</span><span class="muted small">${p.w}×${p.r} · e1RM ${Math.round(p.e)}</span></div>`).join('')}</div>`:''}`}
 
@@ -625,8 +625,8 @@ function vProg(){const names=[...new Set(S.sessions.flatMap(s=>s.exercises.filte
   <p class="small" style="margin:8px 0 0">${ret.str>=0&&ret.bw<0?'Strength up while weight drops: you’re keeping muscle while cutting fat.':ret.str<-3?'Strength dropping. Check protein, sleep and how fast you’re losing.':'Holding steady.'}</p>`:'<p class="muted small" style="margin:0">Needs a few weeks of logged sessions and weigh-ins. This is the key signal on a cut: weight down, strength flat or up.</p>'}</div>
  <h2>Bodyweight trend</h2><div class="card">${bt?`<div class="row between"><span class="muted">Trend weight</span><b>${bt.last.toFixed(1)} kg</b></div>${bt.kgWk!=null?`<div class="row between"><span class="muted">Rate</span><b>${sgn(bt.kgWk,2)} kg/wk (${sgn(bt.pctWk,2)}%)</b></div>`:''}
   <div style="margin-top:8px">${spark(bt.series.map(p=>+p.t.toFixed(1)),bt.series.map(p=>d(p.date)))}</div>`:''}<p class="small" style="margin:8px 0 0">${bwMsg}</p></div>
- <h2>Waist → ${S.settings.goalWaist}"</h2><div class="card">${spark(wa.map(b=>b.waist),wa.map(b=>d(b.date)))}
-  <p class="small" style="margin:8px 0 0">${!wp?'Log waist weekly for a projection.':wp.eta?`At ${wp.slopeWk.toFixed(2)}"/week you reach ${S.settings.goalWaist}" around <b>${wp.eta.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</b> ${wp.eta<=new Date(S.settings.goalDate)?'<span class="day-t">ahead of target</span>':'(after target date)'}.`:'Waist isn’t trending down yet.'}</p></div>
+ <h2>Waist${+S.settings.goalWaist?` → ${S.settings.goalWaist}"`:''}</h2><div class="card">${spark(wa.map(b=>b.waist),wa.map(b=>d(b.date)))}
+  <p class="small" style="margin:8px 0 0">${!wp?'Log waist weekly for a projection.':!+S.settings.goalWaist?`Trend ${wp.slopeWk.toFixed(2)}"/week. Set a goal waist in Settings for a projection.`:wp.eta?`At ${wp.slopeWk.toFixed(2)}"/week you reach ${S.settings.goalWaist}" around <b>${wp.eta.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</b> ${!S.settings.goalDate?'':wp.eta<=new Date(S.settings.goalDate)?'<span class="day-t">ahead of target</span>':'(after target date)'}.`:'Waist isn’t trending down yet.'}</p></div>
  <h2>Progress photos</h2><div class="card">${(()=>{const ph=S.photos,f=waistFit(),last=ph.at(-1),est=last&&photoEst(last),cap=x=>`${d(x.date)}${photoEst(x)!=null?` · ${photoEst(x)}"`:''}`;
   return `${ph.length>=2?`<div class="phcmp">${[ph[0],last].map(x=>`<div><img data-photo="${x.id}" data-act="photo-view" data-id="${x.id}" alt="Progress photo"><div class="muted small" style="margin-top:4px">${cap(x)}</div></div>`).join('')}</div>`:''}
   ${est!=null?`<div class="row between"><span class="muted">Photo waist estimate</span><b>${est}"</b></div>`:''}

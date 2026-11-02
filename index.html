@@ -94,6 +94,11 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 .plh{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--day);margin:10px 4px 2px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:8px}.chips .on{background:var(--day);color:#fff}
 .heat{display:grid;grid-template-rows:repeat(7,1fr);grid-auto-flow:column;gap:3px}.heat i{aspect-ratio:1;border-radius:3px;background:var(--card2)}
+.cam{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;margin-bottom:10px}
+.cam video,.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}.cam img{opacity:.35;pointer-events:none}
+.camc{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;font-size:20px;font-weight:800;color:#fff;text-shadow:0 2px 12px #000}.camc.big{font-size:80px}
+.phgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.phgrid img,.phcmp img,.modal img.ph{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:10px;background:var(--card2);display:block}
+.phcmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 canvas.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:50}
 </style>
 </head>
@@ -228,7 +233,7 @@ const TPL_VERSION=4,ROTATION=['A','B'];
 const TIERS={main:['Main','Always do these'],acc:['Accessory','Trim these first if short on time'],opt:['Optional','Bonus']};
 const RANKS=[[0,'Rookie'],[8,'Regular'],[20,'Grinder'],[40,'Machine'],[75,'Beast'],[150,'Legend']];
 const KEY='mikelifts.v1';
-const defaults=()=>({sessions:[],body:[],templates:JSON.parse(JSON.stringify(PRESETS)),tplVersion:TPL_VERSION,
+const defaults=()=>({sessions:[],body:[],photos:[],templates:JSON.parse(JSON.stringify(PRESETS)),tplVersion:TPL_VERSION,
   settings:{weeklyGoal:2,startWaist:36,goalWaist:34,goalDate:'2027-03-31',name:'Mike',bw:91,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
 let S=load(),tab='home',restAlerted=true,wakeLock=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};
@@ -443,6 +448,68 @@ function finish(){const a=S.active;const sess={id:Date.now(),date:a.start,tid:a.
   <button class="btn primary block" data-act="close-modal">Done</button>`);render();if(prs.length||rk.name!==rk0)confetti()}
 function modal(html){const m=document.createElement('div');m.className='modal';m.innerHTML=`<div class="card">${html}</div>`;document.body.appendChild(m)}
 
+// ================= progress photos + waist estimate =================
+// Images live in IndexedDB on this phone (not in Export); S.photos keeps {id,date,ratio} only.
+function idb(mode,fn){return new Promise((res,rej)=>{const o=indexedDB.open('lifts-photos',1);o.onupgradeneeded=()=>o.result.createObjectStore('p');o.onerror=()=>rej(o.error);
+ o.onsuccess=()=>{const tx=o.result.transaction('p',mode),r=fn(tx.objectStore('p'));tx.oncomplete=()=>{res(r&&r.result);o.result.close()};tx.onerror=()=>rej(tx.error)}})}
+const purl={};
+async function photoURL(id){if(!purl[id]){const b=await idb('readonly',s=>s.get(id)).catch(()=>null);if(b)purl[id]=URL.createObjectURL(b)}return purl[id]}
+function fillPhotos(){document.querySelectorAll('img[data-photo]').forEach(im=>photoURL(+im.dataset.photo).then(u=>{if(u)im.src=u}))}
+// On-device pose model (MediaPipe). Downloaded once (~6 MB + wasm), then served from the browser cache.
+// GPU (WebGL) delegate: the CPU path aborts when segmentation masks are requested (tasks-vision 0.10.35).
+const MP='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35',MP_MODEL='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+let poseP=null,camStream=null,shot=null;
+function pose(){return poseP||(poseP=(async()=>{const v=await import(MP+'/vision_bundle.mjs'),fs=await v.FilesetResolver.forVisionTasks(MP+'/wasm');
+ return v.PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:MP_MODEL,delegate:'GPU'},runningMode:'IMAGE',numPoses:1,outputSegmentationMasks:true})})().catch(e=>{poseP=null;throw e}))}
+// Waist width (body outline at a fixed point between hips and shoulders) divided by torso length,
+// so distance from the camera cancels out. Returns {ratio,y,l,r} in 0–1 image coords, or {err}.
+function waistFromPose(lm,mask,W,H){const P=i=>({x:lm[i].x*W,y:lm[i].y*H,v:lm[i].visibility??1});
+ if([11,12,23,24].some(i=>P(i).v<.5))return{err:'Couldn’t see both shoulders and hips. Step back so your whole torso is in frame.'};
+ const sh={x:(P(11).x+P(12).x)/2,y:(P(11).y+P(12).y)/2},hp={x:(P(23).x+P(24).x)/2,y:(P(23).y+P(24).y)/2},torso=Math.hypot(hp.x-sh.x,hp.y-sh.y);
+ const y0=hp.y-.25*(hp.y-sh.y),cx=hp.x+.25*(sh.x-hp.x),band=Math.max(1,Math.round(.03*torso)),rows=[];
+ for(let y=Math.round(y0-band);y<=Math.round(y0+band);y++){if(y<0||y>=H)continue;let l=Math.round(cx),r=l;if(!(mask[y*W+l]>.5))continue;
+  while(l>0&&mask[y*W+l-1]>.5)l--;while(r<W-1&&mask[y*W+r+1]>.5)r++;rows.push({w:r-l+1,l,r})}
+ if(!rows.length)return{err:'Couldn’t find your outline. Try a plainer background and better light.'};
+ rows.sort((a,b)=>a.w-b.w);const m=rows[rows.length>>1],shW=Math.abs(P(11).x-P(12).x);
+ return{ratio:m.w/torso,y:y0/H,l:m.l/W,r:(m.r+1)/W,warn:m.w>1.3*shW?'Looks wider than expected: keep your arms away from your sides.':''}}
+async function measurePhoto(cv){const res=(await pose()).detect(cv),lm=res.landmarks&&res.landmarks[0],mk=res.segmentationMasks&&res.segmentationMasks[0];
+ if(!lm||!mk)return{err:'No person found in the photo.'};const out=waistFromPose(lm,mk.getAsFloat32Array(),mk.width,mk.height);mk.close&&mk.close();return out}
+// Learns your photo → tape relation from days with both: waist ≈ b × ratio (least squares through zero).
+// shortcut: proportional fit only; worth a 2-parameter fit once there are many pairs over a wider waist range.
+const tapeOn=t=>{const b=S.body.find(b=>b.waist&&isoD(b.date)===isoD(t));return b?b.waist:null};
+function waistFit(){const p=S.photos.filter(x=>x.ratio&&tapeOn(x.date));if(!p.length)return null;
+ const b=p.reduce((a,x)=>a+tapeOn(x.date)*x.ratio,0)/p.reduce((a,x)=>a+x.ratio*x.ratio,0);
+ const err=p.length>=3?Math.sqrt(p.reduce((a,x)=>a+(b*x.ratio-tapeOn(x.date))**2,0)/(p.length-1)):null;return{b,n:p.length,err}}
+const photoEst=x=>{const f=waistFit();return f&&x.ratio?+(f.b*x.ratio).toFixed(1):null};
+function stopCam(){if(camStream)camStream.getTracks().forEach(t=>t.stop());camStream=null}
+async function openCam(){const last=S.photos.at(-1);
+ modal(`<div class="cam"><video id="camv" playsinline autoplay muted></video>${last?'<img id="camg" alt="">':''}<div class="camc" id="camc"></div></div>
+  <p class="muted small" style="margin-top:0">Phone propped at waist height, ~2 m away. Same spot, light and clothing each time, arms slightly out, relaxed stomach.${last?' Line up with the faded last photo.':''}</p>
+  <div class="row"><button class="btn primary" style="flex:1" data-act="cam-shot">Take in 5 s</button><label class="btn">Library<input type="file" accept="image/*" id="camf" hidden></label></div>
+  <button class="btn ghost block" data-act="cam-close" style="margin-top:8px">Cancel</button>`);
+ if(last)photoURL(last.id).then(u=>{const g=$('#camg');if(u&&g)g.src=u});
+ pose().catch(()=>{});// start the model download while you line up
+ try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1080},height:{ideal:1440}},audio:false});const v=$('#camv');if(v)v.srcObject=camStream;else stopCam()}
+ catch(e){const c=$('#camc');if(c)c.textContent='No camera access. Use Library, or allow the camera in Settings.'}}
+function toCanvas(src,w,h){const k=Math.min(1,1280/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c}
+async function analyse(cv){const card=document.querySelector('.modal .card');stopCam();shot={cv,m:null};
+ card.innerHTML='<div class="cam"><div class="camc">Finding your waist…</div></div><p class="muted small">First time downloads the body-tracking model (~6 MB).</p>';
+ let m;try{m=await measurePhoto(cv)}catch(e){m={err:'Couldn’t load the body-tracking model. Check your connection and try again.'}}
+ shot.m=m.err?null:m;const view=document.createElement('canvas');view.width=cv.width;view.height=cv.height;const x=view.getContext('2d');x.drawImage(cv,0,0);
+ if(shot.m){x.strokeStyle='#22c58b';x.lineWidth=Math.max(3,cv.width/150);x.beginPath();x.moveTo(m.l*cv.width,m.y*cv.height);x.lineTo(m.r*cv.width,m.y*cv.height);x.stroke()}
+ const today=tapeOn(Date.now()),est=shot.m&&waistFit()?+(waistFit().b*m.ratio).toFixed(1):null;
+ card.innerHTML=`<img class="ph" src="${view.toDataURL('image/jpeg',.8)}" alt="Progress photo">
+  <p class="small" style="margin:10px 0 6px">${m.err?esc(m.err)+' You can still save it as a progress photo.':`${est!=null?`Estimated waist <b class="day-t">${est}"</b>`:'Measured. Add a tape measurement to calibrate.'}<br><span class="muted">Green line = where it measured.</span>${m.warn?`<br><span style="color:#e5a50a">${esc(m.warn)}</span>`:''}`}</p>
+  <input class="f" id="camt" inputmode="decimal" placeholder='Tape waist today " (teaches the estimate)' value="${today??''}">
+  <div class="row" style="margin-top:8px"><button class="btn primary" style="flex:1" data-act="cam-save">Save</button><button class="btn" data-act="cam-retake">Retake</button></div>
+  <button class="btn ghost block" data-act="cam-close" style="margin-top:8px">Cancel</button>`}
+async function savePhoto(){const id=Date.now(),blob=await new Promise(r=>shot.cv.toBlob(r,'image/jpeg',.85));
+ try{await idb('readwrite',s=>s.put(blob,id))}catch(e){alert('Couldn’t store the photo (storage full or blocked).');return}
+ S.photos.push({id,date:id,ratio:shot.m?+shot.m.ratio.toFixed(4):null});
+ const t=num(($('#camt').value||'').replace(',','.')),b=S.body.find(b=>b.waist&&isoD(b.date)===isoD(id));
+ if(t!=null){if(b)b.waist=t;else S.body.push({date:id,weight:null,waist:t})}
+ shot=null;save();document.querySelector('.modal').remove();toast('Photo saved');render()}
+
 // ================= views =================
 const ICONS={home:'<path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>',hist:'<path d="M12 7v5l3 2M21 12a9 9 0 11-3-6.7M21 4v5h-5"/>',
  prog:'<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',set:'<path d="M4 6h16M4 12h16M4 18h16"/>'};
@@ -450,7 +517,7 @@ function nav(){$('#nav').innerHTML=[['home',S.active?'Workout':'Home'],['hist','
  `<button data-tab="${k}" class="${tab===k?'on':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>${l}</button>`).join('')}
 function render(){setDay(S.active?S.active.color||tplColor(S.active.tid):nextTpl().color||'#3d7bff');nav();const m=$('#main');
  if(tab==='home')m.innerHTML=S.active?vWorkout():vHome();
- if(tab==='hist')m.innerHTML=vHist();if(tab==='prog')m.innerHTML=vProg();if(tab==='set')m.innerHTML=vSet();tickRest()}
+ if(tab==='hist')m.innerHTML=vHist();if(tab==='prog')m.innerHTML=vProg();if(tab==='set')m.innerHTML=vSet();fillPhotos();tickRest()}
 
 function vHome(){const st=S.settings,wk=weekCounts()[monday(Date.now())]||0,g=st.weeklyGoal,nx=nextTpl(),sk=streak(),rk=rank();
  const hr=new Date().getHours(),greet=hr<11?'Morning':hr<18?'Let’s go':'Evening';
@@ -560,6 +627,12 @@ function vProg(){const names=[...new Set(S.sessions.flatMap(s=>s.exercises.filte
   <div style="margin-top:8px">${spark(bt.series.map(p=>+p.t.toFixed(1)),bt.series.map(p=>d(p.date)))}</div>`:''}<p class="small" style="margin:8px 0 0">${bwMsg}</p></div>
  <h2>Waist → ${S.settings.goalWaist}"</h2><div class="card">${spark(wa.map(b=>b.waist),wa.map(b=>d(b.date)))}
   <p class="small" style="margin:8px 0 0">${!wp?'Log waist weekly for a projection.':wp.eta?`At ${wp.slopeWk.toFixed(2)}"/week you reach ${S.settings.goalWaist}" around <b>${wp.eta.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</b> ${wp.eta<=new Date(S.settings.goalDate)?'<span class="day-t">ahead of target</span>':'(after target date)'}.`:'Waist isn’t trending down yet.'}</p></div>
+ <h2>Progress photos</h2><div class="card">${(()=>{const ph=S.photos,f=waistFit(),last=ph.at(-1),est=last&&photoEst(last),cap=x=>`${d(x.date)}${photoEst(x)!=null?` · ${photoEst(x)}"`:''}`;
+  return `${ph.length>=2?`<div class="phcmp">${[ph[0],last].map(x=>`<div><img data-photo="${x.id}" data-act="photo-view" data-id="${x.id}" alt="Progress photo"><div class="muted small" style="margin-top:4px">${cap(x)}</div></div>`).join('')}</div>`:''}
+  ${est!=null?`<div class="row between"><span class="muted">Photo waist estimate</span><b>${est}"</b></div>`:''}
+  <p class="small muted" style="margin:6px 0 10px">${f?`Learned from ${f.n} day${f.n>1?'s':''} with photo + tape${f.err!=null?` · typical error ±${f.err.toFixed(1)}"`:''}.${f.n<5?' A few more tape days make it more accurate.':' Keep the tape as the real number.'}`:'Log a tape waist on the same day as a photo and it learns to estimate your waist from photos.'}</p>
+  ${ph.length?`<div class="phgrid" style="margin-bottom:10px">${[...ph].reverse().slice(0,8).map(x=>`<img data-photo="${x.id}" data-act="photo-view" data-id="${x.id}" alt="${cap(x)}">`).join('')}</div>`:''}
+  <button class="btn primary block" data-act="cam-open">Take progress photo</button>`})()}</div>
  <h2>Sets per muscle, last 7 days</h2><div class="card">${MUSCLE_TARGETS.map(([m,lo,hi])=>{const v=ws[m]||0,col=v<lo?'#e5a50a':v<=hi?'var(--good)':'var(--day)';
   return `<div style="margin:7px 0"><div class="row between small"><span>${m}</span><span class="muted">${+v.toFixed(1)} / ${lo}–${hi}</span></div><div class="bar" style="height:6px;position:relative"><i style="width:${Math.min(100,v/(hi*1.2)*100)}%;background:${col}"></i></div></div>`}).join('')}
   <p class="muted small" style="margin:8px 0 0">Direct sets count 1, secondary muscles 0.5: the counting that fit best in the largest volume meta-analysis (Pelland et al., 67 studies). More sets keep adding growth with diminishing returns past ~10–12/week; ~4 hard sets is the minimum that clearly works, and enough to hold muscle on a cut.</p></div>
@@ -620,6 +693,7 @@ document.addEventListener('input',ev=>{const t=ev.target;
  if(t.id==='pq'&&pk){pk.q=t.value;renderPick()}
  if(t.dataset.set){S.settings[t.dataset.set]=t.type==='number'?+t.value:t.value;save()}});
 document.addEventListener('change',ev=>{if(ev.target.tagName==='SELECT'&&ev.target.dataset.set){S.settings[ev.target.dataset.set]=ev.target.value;save()}if(ev.target.id==='progEx'){progEx=ev.target.value;render()}
+ if(ev.target.id==='camf'){const f=ev.target.files[0];if(f)createImageBitmap(f).then(bm=>analyse(toCanvas(bm,bm.width,bm.height))).catch(()=>alert('Couldn’t open that image.'))}
  if(ev.target.id==='imp'){const f=ev.target.files[0];if(!f)return;f.text().then(t=>{try{const d=JSON.parse(t);if(!d.sessions)throw 0;S={...defaults(),...d};save();toast('Imported');render()}catch(e){alert('Not a valid backup file')}})}});
 document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[data-tab]');if(!b)return;
  if(b.dataset.tab){tab=b.dataset.tab;render();scrollTo(0,0);return}
@@ -650,6 +724,17 @@ document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[da
  case 'rest+15':a.restEnd=Math.max(a.restEnd,Date.now())+15000;a.restDur+=15;restAlerted=false;save();tickRest();break;
  case 'rest-skip':a.restEnd=0;save();tickRest();break;
  case 'close-modal':b.closest('.modal').remove();break;
+ case 'cam-open':openCam();break;
+ case 'cam-close':stopCam();shot=null;b.closest('.modal').remove();break;
+ case 'cam-retake':b.closest('.modal').remove();openCam();break;
+ case 'cam-save':savePhoto();break;
+ case 'cam-shot':{const v=$('#camv'),c=$('#camc');if(!camStream||!v.videoWidth)return;b.disabled=true;c.classList.add('big');
+  let n=5;c.textContent=n;const iv=setInterval(()=>{if(!camStream){clearInterval(iv);return}if(--n>0){c.textContent=n;return}clearInterval(iv);c.textContent='';
+   analyse(toCanvas(v,v.videoWidth,v.videoHeight))},1000);break}
+ case 'photo-view':{const x=S.photos.find(p=>p.id==b.dataset.id);if(!x)return;
+  modal(`<img class="ph" data-photo="${x.id}" alt="Progress photo"><p class="small">${new Date(x.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}${photoEst(x)!=null?` · est. ${photoEst(x)}"`:''}${tapeOn(x.date)?` · tape ${tapeOn(x.date)}"`:''}</p>
+   <div class="row"><button class="btn primary" style="flex:1" data-act="close-modal">Close</button><button class="btn ghost" style="color:#ff5c7a" data-act="photo-del" data-id="${x.id}">Delete</button></div>`);fillPhotos();break}
+ case 'photo-del':if(confirm('Delete this photo?')){const id=+b.dataset.id;idb('readwrite',s=>s.delete(id)).catch(()=>{});S.photos=S.photos.filter(p=>p.id!==id);save();b.closest('.modal').remove();render()}break;
  case 'sess-del':if(confirm('Delete this session?')){S.sessions=S.sessions.filter(s=>s.id!=b.dataset.id);save();render()}break;
  case 'body-add':{const w=num($('#bw').value.replace(',','.')),wa=num($('#bwa').value.replace(',','.'));if(w==null&&wa==null)return;
   S.body.push({date:Date.now(),weight:w,waist:wa});save();toast('Logged');render();break}
@@ -663,7 +748,7 @@ document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[da
  case 'health':sendToHealth(b.dataset.k);break;
  case 'tpl-save':try{const t=JSON.parse($('#tpls').value);if(!Array.isArray(t))throw 0;S.templates=t;save();toast('Presets saved');render()}catch(e){alert('Invalid JSON')}break;
  case 'tpl-reset':if(confirm('Reset presets to default?')){S.templates=JSON.parse(JSON.stringify(PRESETS));save();render()}break;
- case 'wipe':if(confirm('Erase ALL data? Export first if unsure.')){localStorage.removeItem(KEY);S=defaults();render()}break;
+ case 'wipe':if(confirm('Erase ALL data, including progress photos? Export first if unsure.')){localStorage.removeItem(KEY);idb('readwrite',s=>s.clear()).catch(()=>{});S=defaults();render()}break;
  }});
 if(S.active)keepAwake(true);
 render();

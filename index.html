@@ -87,6 +87,7 @@ details summary{cursor:pointer;list-style:none}details summary::-webkit-details-
 .timer{font-variant-numeric:tabular-nums}
 .pill{display:inline-block;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;border:1px solid var(--line);color:var(--text);letter-spacing:1px;text-transform:uppercase}
 .swap{background:var(--card2);border:0;color:var(--text);border-radius:9px;padding:5px 8px;font-size:13px;font-weight:700}
+.swap.str{background:rgba(61,123,255,.22);color:#a9c4ff}.swap.size{color:var(--muted)}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:6px}
 .modal .plist{max-height:48vh;overflow:auto;text-align:left;margin-top:8px}
 .plist button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:10px 4px;font:600 15px inherit;font-family:inherit}
@@ -115,8 +116,8 @@ canvas.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:non
 // kind: lift (kg × reps) · hold (+kg × sec) · cardio (level × min). ss = superset group (alternate sets, rest after both).
 const PRESETS=[
  {id:'A',name:'A · Squat + Incline',color:'#3d7bff',exercises:[
-  {name:'Back Squat',tier:'main',region:'Lower',muscles:'quads, glutes',sets:3,repMin:6,repMax:8,rest:150,inc:2.5,alts:['Goblet Squat','Leg Press'],cue:'Set the safety pins just below the bottom position: no spotter needed.'},
-  {name:'Incline DB Press',tier:'main',region:'Upper',muscles:'upper chest, front delts, triceps',sets:3,repMin:8,repMax:10,rest:120,inc:2,alts:['Incline Smith Press','Machine Chest Press'],cue:'kg = per dumbbell. Upper chest fills out the top of the V.'},
+  {name:'Hack Squat',tier:'main',region:'Lower',muscles:'quads, glutes',focus:'str',sets:4,repMin:4,repMax:6,rest:180,inc:5,size:{sets:3,repMin:8,repMax:12,rest:120},alts:['Back Squat','Leg Press','Goblet Squat'],cue:'Heavy but controlled: 2 reps in the tank on every set. Feet mid-platform, full depth, safety catches set. 6,6,6,6 → +5 kg.'},
+  {name:'Incline Smith Press',tier:'main',region:'Upper',muscles:'upper chest, front delts, triceps',focus:'str',sets:3,repMin:4,repMax:6,rest:180,inc:2.5,size:{sets:3,repMin:8,repMax:10,rest:120},alts:['Incline DB Press','Machine Chest Press'],cue:'Bench ~30°, bar to the upper chest, safety stops set. 2 reps in the tank; 6,6,6 → +2.5 kg.'},
   {name:'Lat Pulldown',tier:'main',region:'Upper',muscles:'lats, biceps',sets:4,repMin:8,repMax:12,rest:90,inc:2.5,alts:['Neutral-Grip Pulldown','Assisted Pull-up'],cue:'Drive elbows to your back pockets. Full stretch at the top.'},
   {name:'Seated Leg Curl',tier:'acc',region:'Lower',muscles:'hamstrings',ss:'a1',sets:3,repMin:10,repMax:12,rest:60,inc:2.5,alts:['Lying Leg Curl'],cue:'Seated beats lying for growth: hamstrings are stretched at the hip.'},
   {name:'Cable Crunch',tier:'acc',region:'Core',muscles:'abs',ss:'a1',sets:2,repMin:10,repMax:15,rest:60,inc:2.5,alts:['Hanging Knee Raise'],cue:'Crunch ribs to hips, don’t just bow forward.'},
@@ -126,9 +127,9 @@ const PRESETS=[
   {name:'Triceps Pushdown',tier:'acc',region:'Upper',muscles:'triceps',ss:'a3',sets:2,repMin:10,repMax:15,rest:60,inc:2.5,alts:['Rope Pushdown'],cue:'Elbows pinned to your sides.'},
   {name:'Incline Treadmill Walk',tier:'opt',region:'Cardio',muscles:'conditioning',kind:'cardio',sets:1,repMin:8,repMax:10,rest:0,inc:0,alts:['Bike'],cue:'Lvl = incline %. ~5–6 km/h, no holding the rails. Skip on busy days: your daily steps cover a lot.'}]},
  {id:'B',name:'B · Hinge + Shoulders',color:'#ff7a1a',exercises:[
-  {name:'Romanian Deadlift',tier:'main',region:'Lower',muscles:'hamstrings, glutes, back',sets:3,repMin:8,repMax:10,rest:120,inc:2.5,alts:['DB Romanian Deadlift','Trap Bar Deadlift'],cue:'New lift: start light (empty bar–40 kg). Hips back, bar close, flat back, feel the hamstring stretch.'},
+  {name:'Romanian Deadlift',tier:'main',region:'Lower',muscles:'hamstrings, glutes, back',sets:3,repMin:6,repMax:8,rest:150,inc:2.5,alts:['DB Romanian Deadlift','Trap Bar Deadlift'],cue:'New lift: start light (empty bar–40 kg). Hips back, bar close, flat back, feel the hamstring stretch.'},
   {name:'Leg Press',tier:'main',region:'Lower',muscles:'quads, glutes',sets:3,repMin:10,repMax:12,rest:90,inc:5,alts:['Back Squat','Bulgarian Split Squat'],cue:'Full depth without your lower back peeling off the pad.'},
-  {name:'Seated DB Shoulder Press',tier:'main',region:'Upper',muscles:'front & side delts, triceps',sets:3,repMin:8,repMax:10,rest:90,inc:2,alts:['Machine Shoulder Press','Overhead Press'],cue:'Palms facing each other, elbows slightly forward: friendlier than barbell OHP.'},
+  {name:'Seated DB Shoulder Press',tier:'main',region:'Upper',muscles:'front & side delts, triceps',sets:3,repMin:6,repMax:8,rest:120,inc:2,alts:['Machine Shoulder Press','Overhead Press'],cue:'Palms facing each other, elbows slightly forward: friendlier than barbell OHP.'},
   {name:'Seated Cable Row',tier:'main',region:'Upper',muscles:'lats, mid back, rear delts',sets:4,repMin:10,repMax:12,rest:90,inc:2.5,alts:['Chest-Supported Row'],cue:'Let the shoulders stretch forward, then squeeze back. No rocking.'},
   {name:'Cable Lateral Raise',tier:'acc',region:'Upper',muscles:'side delts',ss:'b1',sets:3,repMin:12,repMax:15,rest:45,inc:1.25,alts:['DB Lateral Raise'],cue:'One arm at a time, cable from behind you.'},
   {name:'Cable Fly',tier:'acc',region:'Upper',muscles:'chest',ss:'b1',sets:2,repMin:12,repMax:15,rest:60,inc:2.5,alts:['Pec Deck'],cue:'Low-to-high angle hits the upper chest.'},
@@ -229,7 +230,7 @@ Rowing Machine|Cardio|conditioning
 Stair Climber|Cardio|conditioning
 Elliptical|Cardio|conditioning`.split('\n').map(l=>{const[name,region,muscles,f]=l.split('|');
  return{name,region,muscles,kind:f==='hold'?'hold':region==='Cardio'?'cardio':undefined,...(f==='bw'&&{inc:0})}});
-const TPL_VERSION=4,ROTATION=['A','B'];
+const TPL_VERSION=5,ROTATION=['A','B'];
 const TIERS={main:['Main','Always do these'],acc:['Accessory','Trim these first if short on time'],opt:['Optional','Bonus']};
 const RANKS=[[0,'Rookie'],[8,'Regular'],[20,'Grinder'],[40,'Machine'],[75,'Beast'],[150,'Legend']];
 const KEY='mikelifts.v1';
@@ -237,9 +238,18 @@ const defaults=()=>({sessions:[],body:[],photos:[],templates:JSON.parse(JSON.str
   settings:{weeklyGoal:2,startWaist:'',goalWaist:'',goalDate:'',name:'',bw:80,walkSpeed:5.5,kcalMode:'estimate',shortcut:'Log Lifts Calories'},active:null});
 let S=load(),tab='home',restAlerted=true,wakeLock=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s){const d=defaults(),m={...d,...s,settings:{...d.settings,...s.settings}};
+ // v5: strength focus on the main lifts. Matched by exercise name, so your other edits and all history stay as they are.
+ if((m.tplVersion||0)<5){const n=name=>d.templates.flatMap(t=>t.exercises).find(x=>x.name===name),up={'Back Squat':()=>n('Hack Squat'),'Incline DB Press':()=>n('Incline Smith Press'),'Romanian Deadlift':x=>({...x,repMin:6,repMax:8,rest:150}),'Seated DB Shoulder Press':x=>({...x,repMin:6,repMax:8,rest:120})};
+  m.templates.forEach(t=>t.exercises=t.exercises.map(x=>up[x.name]?JSON.parse(JSON.stringify(up[x.name](x))):x))}
  // new preset version: add presets you don't have yet, keep your edited ones as they are
  if(m.tplVersion!==TPL_VERSION){m.templates=[...m.templates,...d.templates.filter(p=>!m.templates.some(t=>t.id===p.id))];m.tplVersion=TPL_VERSION}return m}}catch(e){}return defaults()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+// Strength ⇄ size per exercise. sets/repMin/repMax/rest hold the active scheme; the other one is parked in e.str / e.size so flipping back restores it.
+// Defaults: strength = same sets, 4–6 reps, 3 min rest (heavy load drives strength; closeness to failure barely matters). Size = 3 × 8–12, 2 min.
+const SCHEME=['sets','repMin','repMax','rest'],focusOf=e=>e.focus==='str'?'str':'size';
+function setFocus(e,f){if((e.kind||'lift')!=='lift'||focusOf(e)===f)return;const cur=Object.fromEntries(SCHEME.map(k=>[k,e[k]]));
+ const nx={...(f==='str'?{sets:cur.sets,repMin:4,repMax:6,rest:180}:{sets:3,repMin:8,repMax:12,rest:120}),...(e[f]||{})};
+ e[focusOf(e)]=cur;delete e[f];Object.assign(e,nx);e.focus=f}
 
 // ================= helpers =================
 const $=s=>document.querySelector(s);
@@ -557,7 +567,7 @@ function recentPRs(){const best={},out=[];S.sessions.forEach(s=>s.exercises.forE
 
 function exCard(e,i){const k=kindOf(e),c=COLS[k],all=e.sets.every(x=>x.done);
  return `<div class="card ex-card ${all?'complete':''}">
-  <div class="row between"><span class="exname">${esc(e.name)}</span><div class="row" style="gap:4px"><button class="swap" data-act="pk-open" data-m="swap" data-e="${i}">⇄ Swap</button><button class="btn ghost sm" data-act="ex-del" data-e="${i}">✕</button></div></div>
+  <div class="row between"><span class="exname">${esc(e.name)}</span><div class="row" style="gap:4px">${k==='lift'?`<button class="swap ${focusOf(e)}" data-act="focus" data-e="${i}" title="Strength or size rep scheme">${focusOf(e)==='str'?'STR':'SIZE'}</button>`:''}<button class="swap" data-act="pk-open" data-m="swap" data-e="${i}">⇄ Swap</button><button class="btn ghost sm" data-act="ex-del" data-e="${i}">✕</button></div></div>
   <div class="region">${e.tier?`<span class="tier ${e.tier}">${TIERS[e.tier][0]}</span> `:''}${esc(e.region||'')}${e.muscles?' · '+esc(e.muscles):''}</div>
   <div class="muted small" style="margin-top:4px">${k==='cardio'?`${e.repMin}–${e.repMax} min`:`${e.sets.length} × ${e.repMin===e.repMax?e.repMin:e.repMin+'–'+e.repMax}${k==='hold'?' s':''} · rest ${fmtT(e.rest)}`}${e.last?` · last: ${esc(e.last)}`:''}</div>
   <div style="margin-top:6px"><span class="badge ${e.up?'up':''}">${e.up?'▲ ':''}${esc(e.note||'')}</span></div>
@@ -667,9 +677,9 @@ function vSet(){const st=S.settings;
  <div class="row"><button class="btn" data-act="export">Export</button><label class="btn">Import<input type="file" accept=".json" id="imp" hidden></label></div></div>
  <h2>Presets</h2>${S.templates.map(t=>`<div class="card"><b><span class="dot" style="--c:${t.color}"></span>${esc(t.name)}</b>
  ${t.exercises.map((x,i)=>`<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--line)"><div><div>${esc(x.name)}</div><div class="muted small">${x.tier?TIERS[x.tier][0]+' · ':''}${x.sets} × ${x.repMin===x.repMax?x.repMin:x.repMin+'–'+x.repMax}${x.ss?' · superset '+esc(x.ss):''}</div></div>
-  <div class="row" style="gap:4px"><button class="swap" data-act="pk-open" data-m="swap" data-t="${t.id}" data-e="${i}">⇄</button><button class="btn ghost sm" data-act="tex-del" data-t="${t.id}" data-e="${i}">✕</button></div></div>`).join('')}
+  <div class="row" style="gap:4px">${kindOf(x)==='lift'?`<button class="swap ${focusOf(x)}" data-act="focus" data-t="${t.id}" data-e="${i}">${focusOf(x)==='str'?'STR':'SIZE'}</button>`:''}<button class="swap" data-act="pk-open" data-m="swap" data-t="${t.id}" data-e="${i}">⇄</button><button class="btn ghost sm" data-act="tex-del" data-t="${t.id}" data-e="${i}">✕</button></div></div>`).join('')}
  <button class="btn sm" style="margin-top:8px" data-act="pk-open" data-m="add" data-t="${t.id}">+ Add exercise</button></div>`).join('')}
- <details class="card"><summary class="small day-t" style="font-weight:700">Advanced: edit presets as JSON</summary><p class="muted small">Swaps during a workout are remembered automatically. Fields: tier (main/acc/opt), ss (superset group), sets, repMin/repMax, rest (sec), inc (kg), kind, alts, color. Rotation: A → B.</p>
+ <details class="card"><summary class="small day-t" style="font-weight:700">Advanced: edit presets as JSON</summary><p class="muted small">Swaps during a workout are remembered automatically. Fields: tier (main/acc/opt), ss (superset group), sets, repMin/repMax, rest (sec), inc (kg), kind, alts, color, focus (str/size; the STR/SIZE pill flips it and parks the other scheme in str/size). Rotation: A → B.</p>
  <textarea class="f" id="tpls" rows="14" style="font:12px ui-monospace,monospace">${esc(JSON.stringify(S.templates,null,1))}</textarea>
  <div class="row" style="margin-top:8px"><button class="btn primary" data-act="tpl-save">Save presets</button><button class="btn ghost" data-act="tpl-reset">Reset</button></div></details>
  <button class="btn ghost block" data-act="wipe" style="margin-top:16px;color:#ff5c7a">Erase all data</button>`}
@@ -715,6 +725,13 @@ document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act],[da
  case 'pick':if(doPick(b.dataset.n))b.closest('.modal').remove();break;
  case 'split':if(doPick(null))b.closest('.modal').remove();break;
  case 'tex-del':{const t=S.templates.find(t=>t.id===b.dataset.t);if(confirm('Remove '+t.exercises[ei].name+' from '+t.name+'?')){t.exercises.splice(ei,1);save();render()}break}
+ case 'focus':{if(b.dataset.t){const x=S.templates.find(t=>t.id===b.dataset.t).exercises[ei];setFocus(x,focusOf(x)==='str'?'size':'str');save();render();break}
+  // live workout: re-plan the undone sets for the new scheme and mirror the flip into the preset slot, like Swap does
+  const e=a.exercises[ei],f=focusOf(e)==='str'?'size':'str',live={...e,sets:e.sets.length};setFocus(live,f);const s=suggest(live);
+  e.sets=e.sets.filter(x=>x.done);while(e.sets.length<live.sets)e.sets.push({w:s.w,r:s.r,done:false});
+  Object.assign(e,{focus:f,repMin:live.repMin,repMax:live.repMax,rest:live.rest,str:live.str,size:live.size,note:s.note,up:!!s.up});
+  const t=S.templates.find(t=>t.id===a.tid),own=t&&t.exercises[e.ti]&&t.exercises[e.ti].name===e.name;if(own)setFocus(t.exercises[e.ti],f);
+  toast(`${e.name}: ${f==='str'?'strength':'size'} ${e.repMin}–${e.repMax}${own?' · saved to preset':''}`);save();render();break}
  case 'set-add':{const s=a.exercises[ei].sets,l=s[s.length-1]||{w:'',r:''};s.push({w:l.w,r:l.r,done:false});save();render();break}
  case 'set-del':a.exercises[ei].sets.pop();save();render();break;
  case 'ex-del':if(confirm('Remove '+a.exercises[ei].name+'?')){a.exercises.splice(ei,1);save();render()}break;
